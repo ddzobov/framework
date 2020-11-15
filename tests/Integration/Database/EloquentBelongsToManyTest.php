@@ -59,6 +59,7 @@ class EloquentBelongsToManyTest extends DatabaseTestCase
         });
 
         Schema::create('posts_tags_soft', function (Blueprint $table) {
+            $table->increments('id');
             $table->integer('post_id');
             $table->integer('tag_id');
             $table->string('flag')->default('');
@@ -1097,6 +1098,7 @@ class EloquentBelongsToManyTest extends DatabaseTestCase
         $tag4 = Tag::create(['name' => Str::random()]);
 
         $post->tagsWithSoftDeletes()->sync([$tag->id, $tag2->id, $tag3->id, $tag4->id]);
+        $pivotIDs = $post->load('tagsWithSoftDeletes')->tagsWithSoftDeletes->pluck('pivot.id');
 
         $this->assertEquals(
             Tag::whereIn('id', [$tag->id, $tag2->id, $tag3->id, $tag4->id])->pluck('name'),
@@ -1114,8 +1116,44 @@ class EloquentBelongsToManyTest extends DatabaseTestCase
 
         $this->assertEquals(
             Tag::whereIn('id', [$tag->id, $tag2->id, $tag3->id, $tag4->id])->pluck('name'),
-            $post->tagsWithSoftDeletes()->withTrashedPivots()->pluck('name')
+            $post->load('tagsWithSoftDeletes')->tagsWithSoftDeletes->pluck('name')
         );
+
+        $this->assertEquals($pivotIDs, $post->load('tagsWithSoftDeletes')->tagsWithSoftDeletes->pluck('pivot.id'));
+    }
+
+    public function testSyncMethodWithSoftDeletesUsing()
+    {
+        $post = Post::create(['title' => Str::random()]);
+
+        $tag = Tag::create(['name' => Str::random()]);
+        $tag2 = Tag::create(['name' => Str::random()]);
+        $tag3 = Tag::create(['name' => Str::random()]);
+        $tag4 = Tag::create(['name' => Str::random()]);
+
+        $post->tagsWithCustomPivotSoftDeletes()->sync([$tag->id, $tag2->id, $tag3->id, $tag4->id]);
+        $pivotIDs = $post->load('tagsWithCustomPivotSoftDeletes')->tagsWithCustomPivotSoftDeletes->pluck('pivot.id');
+
+        $this->assertEquals(
+            Tag::whereIn('id', [$tag->id, $tag2->id, $tag3->id, $tag4->id])->pluck('name'),
+            $post->load('tagsWithCustomPivotSoftDeletes')->tagsWithCustomPivotSoftDeletes->pluck('name')
+        );
+
+        $post->tagsWithCustomPivotSoftDeletes()->sync([$tag->id, $tag3->id, $tag4->id]);
+
+        $this->assertEquals(
+            Tag::whereIn('id', [$tag->id, $tag3->id, $tag4->id])->pluck('name'),
+            $post->load('tagsWithCustomPivotSoftDeletes')->tagsWithCustomPivotSoftDeletes->pluck('name')
+        );
+
+        $post->tagsWithCustomPivotSoftDeletes()->sync([$tag->id, $tag2->id, $tag3->id, $tag4->id]);
+
+        $this->assertEquals(
+            Tag::whereIn('id', [$tag->id, $tag2->id, $tag3->id, $tag4->id])->pluck('name'),
+            $post->load('tagsWithCustomPivotSoftDeletes')->tagsWithCustomPivotSoftDeletes->pluck('name')
+        );
+
+        $this->assertEquals($pivotIDs, $post->load('tagsWithCustomPivotSoftDeletes')->tagsWithCustomPivotSoftDeletes->pluck('pivot.id'));
     }
 
     public function testSyncWithForceDetachingMethod()
@@ -1262,7 +1300,8 @@ class Post extends Model
     {
         return $this->belongsToMany(Tag::class, 'posts_tags_soft', 'post_id', 'tag_id')
             ->withTimestamps()
-            ->withSoftDeletes();
+            ->withSoftDeletes()
+            ->withPivot('id');
     }
 
     public function tagsWithCustomPivotSoftDeletes()
@@ -1270,7 +1309,8 @@ class Post extends Model
         return $this->belongsToMany(Tag::class, 'posts_tags_soft', 'post_id', 'tag_id')
             ->using(PostTagPivotSoftDeletes::class)
             ->withTimestamps()
-            ->withSoftDeletes();
+            ->withSoftDeletes()
+            ->withPivot('id');
     }
 }
 
