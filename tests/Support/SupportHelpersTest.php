@@ -492,7 +492,7 @@ class SupportHelpersTest extends TestCase
         $this->assertEquals(2, $attempts);
 
         // Make sure we waited 100ms for the first attempt
-        $this->assertTrue(microtime(true) - $startTime >= 0.1);
+        $this->assertEqualsWithDelta(0.1, microtime(true) - $startTime, 0.02);
     }
 
     public function testRetryWithPassingWhenCallback()
@@ -513,7 +513,7 @@ class SupportHelpersTest extends TestCase
         $this->assertEquals(2, $attempts);
 
         // Make sure we waited 100ms for the first attempt
-        $this->assertTrue(microtime(true) - $startTime >= 0.1);
+        $this->assertEqualsWithDelta(0.1, microtime(true) - $startTime, 0.02);
     }
 
     public function testRetryWithFailingWhenCallback()
@@ -637,11 +637,11 @@ class SupportHelpersTest extends TestCase
         $this->assertSame('x"null"x', env('foo'));
     }
 
-    public function testGetFromENVFirst()
+    public function testGetFromSERVERFirst()
     {
         $_ENV['foo'] = 'From $_ENV';
         $_SERVER['foo'] = 'From $_SERVER';
-        $this->assertSame('From $_ENV', env('foo'));
+        $this->assertSame('From $_SERVER', env('foo'));
     }
 
     public function providesPregReplaceArrayData()

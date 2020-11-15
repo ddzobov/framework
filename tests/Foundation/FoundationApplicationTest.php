@@ -87,6 +87,18 @@ class FoundationApplicationTest extends TestCase
         $this->assertArrayHasKey($class, $app->getLoadedProviders());
     }
 
+    public function testServiceProvidersCouldBeLoaded()
+    {
+        $provider = m::mock(ServiceProvider::class);
+        $class = get_class($provider);
+        $provider->shouldReceive('register')->once();
+        $app = new Application;
+        $app->register($provider);
+
+        $this->assertTrue($app->providerIsLoaded($class));
+        $this->assertFalse($app->providerIsLoaded(ApplicationBasicServiceProviderStub::class));
+    }
+
     public function testDeferredServicesMarkedAsBound()
     {
         $app = new Application;
@@ -133,7 +145,7 @@ class FoundationApplicationTest extends TestCase
         $app->setDeferredServices(['foo' => ApplicationDeferredServiceProviderStub::class]);
         $app->instance('foo', 'bar');
         $instance = $app->make('foo');
-        $this->assertEquals($instance, 'bar');
+        $this->assertSame('bar', $instance);
     }
 
     public function testDeferredServicesAreLazilyInitialized()
@@ -180,7 +192,7 @@ class FoundationApplicationTest extends TestCase
             SampleImplementation::class => SampleImplementationDeferredServiceProvider::class,
         ]);
         $instance = $app->make(SampleInterface::class);
-        $this->assertEquals($instance->getPrimitive(), 'foo');
+        $this->assertSame('foo', $instance->getPrimitive());
     }
 
     public function testEnvironment()

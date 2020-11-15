@@ -10,6 +10,9 @@ use Illuminate\Contracts\Routing\UrlRoutable;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Jsonable;
 use Illuminate\Database\ConnectionResolverInterface as Resolver;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\Concerns\AsPivot;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection as BaseCollection;
@@ -143,14 +146,14 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
     /**
      * The name of the "created at" column.
      *
-     * @var string
+     * @var string|null
      */
     const CREATED_AT = 'created_at';
 
     /**
      * The name of the "updated at" column.
      *
-     * @var string
+     * @var string|null
      */
     const UPDATED_AT = 'updated_at';
 
@@ -342,8 +345,6 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
         $totallyGuarded = $this->totallyGuarded();
 
         foreach ($this->fillableFromArray($attributes) as $key => $value) {
-            $key = $this->removeTableFromKey($key);
-
             // The developers may choose to place some attributes in the "fillable" array
             // which means only those attributes may be set through mass assignment to
             // the model, and all others will just get ignored for security reasons.
@@ -386,17 +387,6 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
         }
 
         return $this->getTable().'.'.$column;
-    }
-
-    /**
-     * Remove the table name from a given key.
-     *
-     * @param  string  $key
-     * @return string
-     */
-    protected function removeTableFromKey($key)
-    {
-        return Str::contains($key, '.') ? last(explode('.', $key)) : $key;
     }
 
     /**
@@ -518,6 +508,26 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
     }
 
     /**
+     * Eager load relationships on the polymorphic relation of a model.
+     *
+     * @param  string  $relation
+     * @param  array  $relations
+     * @return $this
+     */
+    public function loadMorph($relation, $relations)
+    {
+        if (! $this->{$relation}) {
+            return $this;
+        }
+
+        $className = get_class($this->{$relation});
+
+        $this->{$relation}->load($relations[$className] ?? []);
+
+        return $this;
+    }
+
+    /**
      * Eager load relations on the model if they are not already eager loaded.
      *
      * @param  array|string  $relations
@@ -533,6 +543,21 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
     }
 
     /**
+     * Eager load relation's column aggregations on the model.
+     *
+     * @param  array|string  $relations
+     * @param  string  $column
+     * @param  string  $function
+     * @return $this
+     */
+    public function loadAggregate($relations, $column, $function = null)
+    {
+        $this->newCollection([$this])->loadAggregate($relations, $column, $function);
+
+        return $this;
+    }
+
+    /**
      * Eager load relation counts on the model.
      *
      * @param  array|string  $relations
@@ -542,9 +567,141 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
     {
         $relations = is_string($relations) ? func_get_args() : $relations;
 
-        $this->newCollection([$this])->loadCount($relations);
+        return $this->loadAggregate($relations, '*', 'count');
+    }
+
+    /**
+     * Eager load relation max column values on the model.
+     *
+     * @param  array|string  $relations
+     * @param  string  $column
+     * @return $this
+     */
+    public function loadMax($relations, $column)
+    {
+        return $this->loadAggregate($relations, $column, 'max');
+    }
+
+    /**
+     * Eager load relation min column values on the model.
+     *
+     * @param  array|string  $relations
+     * @param  string  $column
+     * @return $this
+     */
+    public function loadMin($relations, $column)
+    {
+        return $this->loadAggregate($relations, $column, 'min');
+    }
+
+    /**
+     * Eager load relation's column summations on the model.
+     *
+     * @param  array|string  $relations
+     * @param  string  $column
+     * @return $this
+     */
+    public function loadSum($relations, $column)
+    {
+        return $this->loadAggregate($relations, $column, 'sum');
+    }
+
+    /**
+     * Eager load relation average column values on the model.
+     *
+     * @param  array|string  $relations
+     * @param  string  $column
+     * @return $this
+     */
+    public function loadAvg($relations, $column)
+    {
+        return $this->loadAggregate($relations, $column, 'avg');
+    }
+
+    /**
+     * Eager load relationship column aggregation on the polymorphic relation of a model.
+     *
+     * @param  string  $relation
+     * @param  array  $relations
+     * @param  string  $column
+     * @param  string  $function
+     * @return $this
+     */
+    public function loadMorphAggregate($relation, $relations, $column, $function = null)
+    {
+        if (! $this->{$relation}) {
+            return $this;
+        }
+
+        $className = get_class($this->{$relation});
+
+        $this->{$relation}->loadAggregate($relations[$className] ?? [], $column, $function);
 
         return $this;
+    }
+
+    /**
+     * Eager load relationship counts on the polymorphic relation of a model.
+     *
+     * @param  string  $relation
+     * @param  array  $relations
+     * @return $this
+     */
+    public function loadMorphCount($relation, $relations)
+    {
+        return $this->loadMorphAggregate($relation, $relations, '*', 'count');
+    }
+
+    /**
+     * Eager load relationship max column values on the polymorphic relation of a model.
+     *
+     * @param  string  $relation
+     * @param  array  $relations
+     * @param  string  $column
+     * @return $this
+     */
+    public function loadMorphMax($relation, $relations, $column)
+    {
+        return $this->loadMorphAggregate($relation, $relations, $column, 'max');
+    }
+
+    /**
+     * Eager load relationship min column values on the polymorphic relation of a model.
+     *
+     * @param  string  $relation
+     * @param  array  $relations
+     * @param  string  $column
+     * @return $this
+     */
+    public function loadMorphMin($relation, $relations, $column)
+    {
+        return $this->loadMorphAggregate($relation, $relations, $column, 'min');
+    }
+
+    /**
+     * Eager load relationship column summations on the polymorphic relation of a model.
+     *
+     * @param  string  $relation
+     * @param  array  $relations
+     * @param  string  $column
+     * @return $this
+     */
+    public function loadMorphSum($relation, $relations, $column)
+    {
+        return $this->loadMorphAggregate($relation, $relations, $column, 'sum');
+    }
+
+    /**
+     * Eager load relationship average column values on the polymorphic relation of a model.
+     *
+     * @param  string  $relation
+     * @param  array  $relations
+     * @param  string  $column
+     * @return $this
+     */
+    public function loadMorphAvg($relation, $relations, $column)
+    {
+        return $this->loadMorphAggregate($relation, $relations, $column, 'avg');
     }
 
     /**
@@ -590,29 +747,23 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
             return $query->{$method}($column, $amount, $extra);
         }
 
-        $this->incrementOrDecrementAttributeValue($column, $amount, $extra, $method);
-
-        return $query->where(
-            $this->getKeyName(), $this->getKey()
-        )->{$method}($column, $amount, $extra);
-    }
-
-    /**
-     * Increment the underlying attribute value and sync with original.
-     *
-     * @param  string  $column
-     * @param  float|int  $amount
-     * @param  array  $extra
-     * @param  string  $method
-     * @return void
-     */
-    protected function incrementOrDecrementAttributeValue($column, $amount, $extra, $method)
-    {
-        $this->{$column} = $this->{$column} + ($method === 'increment' ? $amount : $amount * -1);
+        $this->{$column} = $this->isClassDeviable($column)
+            ? $this->deviateClassCastableAttribute($method, $column, $amount)
+            : $this->{$column} + ($method === 'increment' ? $amount : $amount * -1);
 
         $this->forceFill($extra);
 
-        $this->syncOriginalAttribute($column);
+        if ($this->fireModelEvent('updating') === false) {
+            return false;
+        }
+
+        return tap($this->setKeysForSaveQuery($query)->{$method}($column, $amount, $extra), function () use ($column) {
+            $this->syncChanges();
+
+            $this->fireModelEvent('updated', false);
+
+            $this->syncOriginalAttribute($column);
+        });
     }
 
     /**
@@ -657,6 +808,19 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
         }
 
         return true;
+    }
+
+    /**
+     * Save the model to the database without raising any events.
+     *
+     * @param  array  $options
+     * @return bool
+     */
+    public function saveQuietly(array $options = [])
+    {
+        return static::withoutEvents(function () use ($options) {
+            return $this->save($options);
+        });
     }
 
     /**
@@ -779,12 +943,35 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
     }
 
     /**
+     * Set the keys for a select query.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    protected function setKeysForSelectQuery($query)
+    {
+        $query->where($this->getKeyName(), '=', $this->getKeyForSelectQuery());
+
+        return $query;
+    }
+
+    /**
+     * Get the primary key value for a select query.
+     *
+     * @return mixed
+     */
+    protected function getKeyForSelectQuery()
+    {
+        return $this->original[$this->getKeyName()] ?? $this->getKey();
+    }
+
+    /**
      * Set the keys for a save update query.
      *
      * @param  \Illuminate\Database\Eloquent\Builder  $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
-    protected function setKeysForSaveQuery(Builder $query)
+    protected function setKeysForSaveQuery($query)
     {
         $query->where($this->getKeyName(), '=', $this->getKeyForSaveQuery());
 
@@ -798,8 +985,7 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
      */
     protected function getKeyForSaveQuery()
     {
-        return $this->original[$this->getKeyName()]
-                        ?? $this->getKey();
+        return $this->original[$this->getKeyName()] ?? $this->getKey();
     }
 
     /**
@@ -870,7 +1056,7 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
     /**
      * Destroy the models for the given IDs.
      *
-     * @param  \Illuminate\Support\Collection|array|int  $ids
+     * @param  \Illuminate\Support\Collection|array|int|string  $ids
      * @return int
      */
     public static function destroy($ids)
@@ -1107,6 +1293,29 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
     }
 
     /**
+     * Determine if the model has a given scope.
+     *
+     * @param  string  $scope
+     * @return bool
+     */
+    public function hasNamedScope($scope)
+    {
+        return method_exists($this, 'scope'.ucfirst($scope));
+    }
+
+    /**
+     * Apply the given named scope if possible.
+     *
+     * @param  string  $scope
+     * @param  array  $parameters
+     * @return mixed
+     */
+    public function callNamedScope($scope, array $parameters = [])
+    {
+        return $this->{'scope'.ucfirst($scope)}(...$parameters);
+    }
+
+    /**
      * Convert the model instance to an array.
      *
      * @return array
@@ -1157,9 +1366,8 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
             return;
         }
 
-        return static::newQueryWithoutScopes()
+        return $this->setKeysForSelectQuery($this->newQueryWithoutScopes())
                         ->with(is_string($with) ? func_get_args() : $with)
-                        ->where($this->getKeyName(), $this->getKey())
                         ->first();
     }
 
@@ -1175,11 +1383,12 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
         }
 
         $this->setRawAttributes(
-            static::newQueryWithoutScopes()->findOrFail($this->getKey())->attributes
+            $this->setKeysForSelectQuery($this->newQueryWithoutScopes())->firstOrFail()->attributes
         );
 
         $this->load(collect($this->relations)->reject(function ($relation) {
-            return $relation instanceof Pivot;
+            return $relation instanceof Pivot
+                || (is_object($relation) && in_array(AsPivot::class, class_uses_recursive($relation), true));
         })->keys()->all());
 
         $this->syncOriginal();
@@ -1520,7 +1729,16 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
      */
     public function resolveChildRouteBinding($childType, $value, $field)
     {
-        return $this->{Str::plural(Str::camel($childType))}()->where($field, $value)->first();
+        $relationship = $this->{Str::plural(Str::camel($childType))}();
+
+        $field = $field ?: $relationship->getRelated()->getRouteKeyName();
+
+        if ($relationship instanceof HasManyThrough ||
+            $relationship instanceof BelongsToMany) {
+            return $relationship->where($relationship->getRelated()->getTable().'.'.$field, $value)->first();
+        } else {
+            return $relationship->where($field, $value)->first();
+        }
     }
 
     /**
@@ -1657,6 +1875,10 @@ abstract class Model implements Arrayable, ArrayAccess, Jsonable, JsonSerializab
     {
         if (in_array($method, ['increment', 'decrement'])) {
             return $this->$method(...$parameters);
+        }
+
+        if ($resolver = (static::$relationResolvers[get_class($this)][$method] ?? null)) {
+            return $resolver($this);
         }
 
         return $this->forwardCallTo($this->newQuery(), $method, $parameters);

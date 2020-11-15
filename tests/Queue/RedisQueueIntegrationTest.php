@@ -68,6 +68,7 @@ class RedisQueueIntegrationTest extends TestCase
 
     /**
      * @dataProvider redisDriverProvider
+     * @requires extension pcntl
      *
      * @param  mixed  $driver
      *
@@ -75,7 +76,12 @@ class RedisQueueIntegrationTest extends TestCase
      */
     public function testBlockingPop($driver)
     {
+        if (! function_exists('pcntl_fork')) {
+            $this->markTestSkipped('Skipping since the pcntl extension is not available');
+        }
+
         $this->tearDownRedis();
+
         if ($pid = pcntl_fork() > 0) {
             $this->setUpRedis();
             $this->setQueue($driver, 'default', null, 60, 10);
@@ -85,7 +91,7 @@ class RedisQueueIntegrationTest extends TestCase
             $this->setQueue('phpredis');
             sleep(1);
             $this->queue->push(new RedisQueueIntegrationTestJob(12));
-            die;
+            exit;
         } else {
             $this->fail('Cannot fork');
         }
@@ -406,6 +412,26 @@ class RedisQueueIntegrationTest extends TestCase
         $this->assertEquals(0, $this->redis[$driver]->connection()->llen('queues:default'));
 
         $this->assertNull($this->queue->pop());
+    }
+
+    /**
+     * @dataProvider redisDriverProvider
+     *
+     * @param  string  $driver
+     */
+    public function testClear($driver)
+    {
+        $this->setQueue($driver);
+
+        $job1 = new RedisQueueIntegrationTestJob(30);
+        $job2 = new RedisQueueIntegrationTestJob(40);
+
+        $this->queue->push($job1);
+        $this->queue->push($job2);
+
+        $this->assertEquals(2, $this->queue->clear(null));
+        $this->assertEquals(0, $this->queue->size());
+        $this->assertEquals(0, $this->redis[$driver]->connection()->llen('queues:default:notify'));
     }
 
     /**
