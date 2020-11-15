@@ -251,9 +251,24 @@ trait InteractsWithPivotTable
             // Here we will insert the attachment records into the pivot table. Once we have
             // inserted the records, we will touch the relationships if necessary and the
             // function will return. We can parse the IDs before inserting the records.
-            $this->newPivotStatement()->insert($this->formatAttachRecords(
-                $this->parseIds($id), $attributes
-            ));
+            if ($this->withSoftDeletes) {
+                $attributes[$this->deletedAt()] = null;
+
+                if($this->hasPivotColumn($this->updatedAt())) {
+                    $attributes[$this->updatedAt()] = now();
+                }
+
+                foreach($this->parseIds($id) as $key) {
+                    $this->newPivotStatement()->updateOrInsert([
+                        $this->foreignPivotKey => $this->parent->{$this->parentKey},
+                        $this->relatedPivotKey => $key
+                    ], $this->castAttributes($attributes));
+                }
+            } else {
+                $this->newPivotStatement()->insert($this->formatAttachRecords(
+                    $this->parseIds($id), $attributes
+                ));
+            }
         }
 
         if ($touch) {

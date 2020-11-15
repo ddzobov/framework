@@ -1087,6 +1087,37 @@ class EloquentBelongsToManyTest extends DatabaseTestCase
         );
     }
 
+    public function testSyncMethodWithSoftDeletes()
+    {
+        $post = Post::create(['title' => Str::random()]);
+
+        $tag = Tag::create(['name' => Str::random()]);
+        $tag2 = Tag::create(['name' => Str::random()]);
+        $tag3 = Tag::create(['name' => Str::random()]);
+        $tag4 = Tag::create(['name' => Str::random()]);
+
+        $post->tagsWithSoftDeletes()->sync([$tag->id, $tag2->id, $tag3->id, $tag4->id]);
+
+        $this->assertEquals(
+            Tag::whereIn('id', [$tag->id, $tag2->id, $tag3->id, $tag4->id])->pluck('name'),
+            $post->load('tagsWithSoftDeletes')->tagsWithSoftDeletes->pluck('name')
+        );
+
+        $post->tagsWithSoftDeletes()->sync([$tag->id, $tag3->id, $tag4->id]);
+
+        $this->assertEquals(
+            Tag::whereIn('id', [$tag->id, $tag3->id, $tag4->id])->pluck('name'),
+            $post->load('tagsWithSoftDeletes')->tagsWithSoftDeletes->pluck('name')
+        );
+
+        $post->tagsWithSoftDeletes()->sync([$tag->id, $tag2->id, $tag3->id, $tag4->id]);
+
+        $this->assertEquals(
+            Tag::whereIn('id', [$tag->id, $tag2->id, $tag3->id, $tag4->id])->pluck('name'),
+            $post->tagsWithSoftDeletes()->withTrashedPivots()->pluck('name')
+        );
+    }
+
     public function testSyncWithForceDetachingMethod()
     {
         $post = Post::create(['title' => Str::random()]);
